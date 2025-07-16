@@ -1,0 +1,17 @@
+---
+title: "Exploratory Data Analysis"
+author: "Miguel Rosa"
+output:
+    html_document:
+        toc: yes
+        toc_depth: 3
+        highlight: pygments
+        theme: spacelab
+    pdf_document:
+        toc: yes
+        toc_depth: 3
+---
+
+
+
+$\pagebreak$
