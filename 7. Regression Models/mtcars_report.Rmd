@@ -1,0 +1,133 @@
+---
+title: "MPG and Transmission Type in the `mtcars` Data"
+author: "Codex"
+date: "2026-07-11"
+output:
+  pdf_document:
+    fig_caption: true
+geometry: margin=1in
+fontsize: 11pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center"
+)
+
+data(mtcars)
+cars <- mtcars
+cars$am <- factor(cars$am, levels = c(0, 1), labels = c("Automatic", "Manual"))
+
+mean_mpg <- tapply(cars$mpg, cars$am, mean)
+group_counts <- table(cars$am)
+
+fit_unadj <- lm(mpg ~ am, data = cars)
+fit_adj <- lm(mpg ~ wt + qsec + am, data = cars)
+
+coef_unadj <- summary(fit_unadj)$coef["amManual", ]
+coef_adj <- summary(fit_adj)$coef["amManual", ]
+ci_unadj <- confint(fit_unadj)["amManual", ]
+ci_adj <- confint(fit_adj)["amManual", ]
+
+diag_shapiro <- shapiro.test(residuals(fit_adj))
+diag_corr <- cor(fitted(fit_adj), abs(residuals(fit_adj)))
+```
+
+Manual-transmission cars in `mtcars` achieve higher fuel economy than automatic cars on average. The raw difference is `r round(mean_mpg["Manual"] - mean_mpg["Automatic"], 2)` MPG in favor of manuals (`r round(mean_mpg["Manual"], 2)` versus `r round(mean_mpg["Automatic"], 2)` MPG), but part of that gap reflects other vehicle differences. After adjusting for vehicle weight and quarter-mile time with a linear model, the estimated manual advantage is smaller at `r round(coef_adj["Estimate"], 2)` MPG (95% CI: `r sprintf("%.2f", ci_adj[1])` to `r sprintf("%.2f", ci_adj[2])`), which is the better answer to how much transmission type alone is associated with MPG.
+
+# Data Overview
+
+The analysis uses the built-in `mtcars` dataset of 32 automobiles. Transmission type is recorded in `am`, coded here as `Automatic` and `Manual`. The outcome of interest is miles per gallon (`mpg`).
+
+Table 1 summarizes MPG by transmission group.
+
+```{r mean-table}
+summary_table <- data.frame(
+  Transmission = names(group_counts),
+  Cars = as.integer(group_counts),
+  Mean_MPG = round(as.numeric(mean_mpg), 2)
+)
+knitr::kable(summary_table, col.names = c("Transmission", "N", "Mean MPG"))
+```
+
+# Exploratory Analysis
+
+The transmission groups differ noticeably in observed MPG. Manual cars have a higher average MPG and a higher overall MPG distribution. However, transmission type is also related to other vehicle characteristics. In particular, manual cars tend to be lighter, and lighter cars tend to have better fuel economy. Quarter-mile time also shows a relationship with MPG and differs somewhat across transmission groups. These patterns suggest that a simple group comparison will overstate the independent contribution of transmission type.
+
+# Regression Results
+
+An unadjusted linear model,
+\[
+\text{MPG} = \beta_0 + \beta_1 \text{Manual},
+\]
+estimates a manual-transmission advantage of `r round(coef_unadj["Estimate"], 2)` MPG (95% CI: `r sprintf("%.2f", ci_unadj[1])` to `r sprintf("%.2f", ci_unadj[2])`).
+
+To separate transmission from obvious confounding structure, a second model adjusts for weight (`wt`) and quarter-mile time (`qsec`):
+\[
+\text{MPG} = \beta_0 + \beta_1 \text{wt} + \beta_2 \text{qsec} + \beta_3 \text{Manual}.
+\]
+In this model, the estimated manual-transmission effect is `r round(coef_adj["Estimate"], 2)` MPG (95% CI: `r sprintf("%.2f", ci_adj[1])` to `r sprintf("%.2f", ci_adj[2])`, p = `r sprintf("%.3f", coef_adj["Pr(>|t|)"])`). The reduction from `r round(coef_unadj["Estimate"], 2)` to `r round(coef_adj["Estimate"], 2)` MPG indicates that much of the raw gap is explained by differences in the types of cars that use manual transmissions, especially weight.
+
+A brief diagnostic check suggests the adjusted model is reasonable for this small analysis. Residuals are approximately normal by the Shapiro-Wilk test (p = `r sprintf("%.3f", diag_shapiro$p.value)`), and the residual spread does not show an obvious severe pattern large enough to overturn the conclusion.
+
+# Conclusion
+
+Across the `mtcars` sample, manual cars have better MPG than automatic cars on average. The direct sample comparison shows a gap of about `r round(mean_mpg["Manual"] - mean_mpg["Automatic"], 2)` MPG, but that overstates the transmission effect because manual cars also differ in weight and performance characteristics. After adjustment, the estimated MPG advantage for manual transmission is about `r round(coef_adj["Estimate"], 2)` MPG. That adjusted estimate is the best concise answer to the question of how much better manual transmission is for fuel economy in this dataset.
+
+\clearpage
+
+# Appendix
+
+```{r fig-boxplot, fig.cap="MPG distribution by transmission type.", fig.width=5.5, fig.height=4}
+boxplot(
+  mpg ~ am,
+  data = cars,
+  col = c("#c7d9f2", "#f2c7cf"),
+  ylab = "Miles per gallon",
+  xlab = "Transmission"
+)
+```
+
+```{r fig-wt, fig.cap="MPG versus weight, colored by transmission type.", fig.width=5.5, fig.height=4}
+cols <- c("Automatic" = "#2b6cb0", "Manual" = "#c53030")
+plot(
+  cars$wt,
+  cars$mpg,
+  col = cols[cars$am],
+  pch = 19,
+  xlab = "Weight (1000 lbs)",
+  ylab = "Miles per gallon"
+)
+legend("topright", legend = names(cols), col = cols, pch = 19, bty = "n")
+abline(lm(mpg ~ wt, data = subset(cars, am == "Automatic")), col = cols["Automatic"], lwd = 2)
+abline(lm(mpg ~ wt, data = subset(cars, am == "Manual")), col = cols["Manual"], lwd = 2)
+```
+
+```{r fig-qsec, fig.cap="MPG versus quarter-mile time, colored by transmission type.", fig.width=5.5, fig.height=4}
+plot(
+  cars$qsec,
+  cars$mpg,
+  col = cols[cars$am],
+  pch = 19,
+  xlab = "Quarter-mile time (seconds)",
+  ylab = "Miles per gallon"
+)
+legend("bottomright", legend = names(cols), col = cols, pch = 19, bty = "n")
+abline(lm(mpg ~ qsec, data = subset(cars, am == "Automatic")), col = cols["Automatic"], lwd = 2)
+abline(lm(mpg ~ qsec, data = subset(cars, am == "Manual")), col = cols["Manual"], lwd = 2)
+```
+
+```{r fig-diagnostic, fig.cap="Residuals versus fitted values for the adjusted model.", fig.width=5.5, fig.height=4}
+plot(
+  fitted(fit_adj),
+  residuals(fit_adj),
+  pch = 19,
+  col = "#444444",
+  xlab = "Fitted MPG",
+  ylab = "Residuals"
+)
+abline(h = 0, lty = 2, col = "#c53030")
+```

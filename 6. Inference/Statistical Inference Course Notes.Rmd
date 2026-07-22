@@ -803,7 +803,7 @@ coverage <- sapply(pvals, function(p){
 })
 # plot CI results vs 95%
 ggplot(data.frame(pvals, coverage), aes(x = pvals, y = coverage)) + geom_line(size = 2) + geom_hline(yintercept = 0.95) + ylim(.75, 1.0)
-````
+```
 
 * as we can see from above, the coverage is much better for the 95% interval
 * in fact, all of the estimates are more conservative as we previously discussed, indicating the Agresti-Coull intervals are ***wider*** than the regular confidence intervals
