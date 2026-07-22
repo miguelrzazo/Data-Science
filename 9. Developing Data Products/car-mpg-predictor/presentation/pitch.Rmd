@@ -1,0 +1,99 @@
+---
+title: "Car MPG Predictor"
+subtitle: "An Interactive Shiny Application"
+author: "Miguel Rosa"
+date: "2026"
+output:
+  ioslides_presentation:
+    widescreen: true
+    small_font: true
+---
+
+## Why Predict MPG?
+
+- Fuel economy affects **cost**, **environment**, and **policy**
+- Estimating MPG from car specs requires statistical knowledge
+- This app makes it **simple** for anyone
+
+```{r, echo=TRUE, results='asis'}
+data(mtcars)
+cat("Dataset:", nrow(mtcars), "cars,", ncol(mtcars), "variables")
+```
+
+---
+
+## The Model
+
+Multiple linear regression using three key predictors:
+
+$$\hat{MPG} = \beta_0 + \beta_1 \cdot Weight + \beta_2 \cdot HP + \beta_3 \cdot Cylinders$$
+
+```{r, echo=TRUE}
+data(mtcars)
+fit <- lm(mpg ~ wt + hp + cyl, data = mtcars)
+round(summary(fit)$coefficients, 4)
+```
+
+<br>
+
+R-squared = **0.84** — the model explains 84% of MPG variance.
+
+---
+
+## How It Works
+
+**Three simple inputs:**
+
+1. **Weight** — 1,500 to 5,500 lbs
+2. **Horsepower** — 50 to 350 HP
+3. **Cylinders** — 4, 6, or 8
+
+**One click** → instant prediction + scatterplot
+
+```{r, echo=TRUE, fig.height=3.5, fig.width=6}
+library(ggplot2)
+mtcars$cyl_f <- as.factor(mtcars$cyl)
+ggplot(mtcars, aes(wt, mpg, color=cyl_f)) + 
+  geom_point(size=3) + 
+  labs(title="Weight vs MPG by Cylinders",
+       x="Weight (1000 lbs)", y="MPG", color="Cylinders") +
+  theme_minimal()
+```
+
+---
+
+## Live Demo
+
+- Built with **R + Shiny + ggplot2**
+- Model: `lm(mpg ~ wt + hp + cyl)` on the `mtcars` dataset
+
+**Example predictions:**
+
+```{r, echo=TRUE}
+fit <- lm(mpg ~ wt + hp + cyl, data = mtcars)
+examples <- data.frame(
+  wt = c(2.5, 3.5, 5.0),
+  hp = c(100, 150, 250),
+  cyl = c(4, 6, 8)
+)
+preds <- round(predict(fit, examples), 1)
+cat("Light / 4-cyl:", preds[1], "MPG\n")
+cat("Mid   / 6-cyl:", preds[2], "MPG\n")
+cat("Heavy / 8-cyl:", preds[3], "MPG\n")
+```
+
+---
+
+## Summary
+
+| Feature | Detail |
+|---------|--------|
+| **Inputs** | 3 sliders (weight, HP, cylinders) |
+| **Output** | Predicted MPG + scatterplot |
+| **Model** | Linear regression, R² = 0.84 |
+| **Data** | `mtcars` (32 observations) |
+| **Tools** | R, Shiny, ggplot2 |
+
+Source code: [github.com/miguelrzazo/Data-Science](https://github.com/miguelrzazo/Data-Science)
+
+**Try it out!**
