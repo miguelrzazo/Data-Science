@@ -1,0 +1,77 @@
+---
+title: "Next-Word Predictor"
+subtitle: "A Stupid Backoff n-gram model for predictive text"
+author: "Miguel Rosa"
+date: "`r Sys.Date()`"
+output: ioslides_presentation
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(data.table)
+library(ggplot2)
+
+results <- readRDS("../models/evaluation_results.rds")
+get_metric <- function(name) results[metric == name, value]
+```
+
+## The Problem
+
+- Mobile keyboards need to suggest the next word **instantly** as you type.
+- Built on ~3.8M lines of blogs, news, and tweets (SwiftKey corpus).
+- Constraints that matter as much as accuracy:
+    - **Size** — must fit comfortably in a phone's / free-tier server's memory.
+    - **Speed** — a suggestion that arrives after you've already typed the word is useless.
+
+## How the Model Works
+
+- **Stupid Backoff**: predict from the longest context we've seen, and fall back
+  to shorter contexts when we haven't.
+
+```
+"I want to go to the"  →  try 3-word context "go to the"
+                          not enough matches? → try "to the"
+                          still not enough?   → try "the"
+                          still not enough?   → most common words overall
+```
+
+- Each backoff step is discounted (×0.4) so longer, more specific contexts are
+  always preferred when available.
+- Rare words (seen only once) are folded into a shared `<unk>` token before
+  counting — this bounds vocabulary size without losing the context they
+  provided.
+- Only the top 5 candidate words are kept per context — predictions never need
+  more, and this is most of the memory savings.
+
+## Performance
+
+```{r perf-table}
+knitr::kable(results, col.names = c("Metric", "Value"), digits = 2)
+```
+
+```{r perf-chart, fig.height=3.2}
+acc <- results[metric %in% c("accuracy@1", "accuracy@2", "accuracy@3")]
+acc[, metric := factor(metric, levels = c("accuracy@1", "accuracy@2", "accuracy@3"))]
+ggplot(acc, aes(x = metric, y = value)) +
+  geom_col(fill = "#2980b9", width = 0.6) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  labs(x = NULL, y = "Accuracy", title = "Next-word accuracy on held-out test data") +
+  theme_minimal(base_size = 13)
+```
+
+## The App
+
+- A Shiny app takes a phrase and shows the top 3 predicted next words as
+  clickable buttons — click one to append it and keep typing.
+- Predictions update live as you type (debounced ~300ms).
+- Try it: **[miguelrzazo.shinyapps.io/next-word-predictor](https://miguelrzazo.shinyapps.io/next-word-predictor/)**
+
+## Takeaways & Next Steps
+
+- Stupid Backoff trades a small amount of accuracy for simplicity and speed
+  versus Kneser-Ney smoothing — no discount estimation needed, and lookups
+  are O(1) keyed joins.
+- Limitations: doesn't use semantic similarity, and rare/unseen phrasing still
+  falls back all the way to generic word frequency.
+- Future improvements: word embeddings for semantic backoff, user-specific
+  adaptation, larger training sample if size/latency budget allows.

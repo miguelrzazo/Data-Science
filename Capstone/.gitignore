@@ -1,0 +1,6 @@
+data/
+final/
+shiny/rsconnect/
+.Rhistory
+.RData
+.Rproj.user/

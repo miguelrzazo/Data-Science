@@ -1,0 +1,367 @@
+---
+title: "SwiftKey Capstone: Exploratory Data Analysis"
+author: "Miguel Rosa"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    fig_width: 10
+    fig_height: 6
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, warning = FALSE, message = FALSE,
+  fig.align = "center"
+)
+library(data.table)
+library(ggplot2)
+library(stringr)
+library(dplyr)
+library(scales)
+library(wordcloud)
+library(wordcloud2)
+library(gridExtra)
+
+# Load data
+train <- readRDS("data/train.rds")
+test  <- readRDS("data/test.rds")
+```
+
+# 1. Dataset Overview
+
+## 1.1 Source File Summary
+
+The English SwiftKey dataset contains text from three sources: blogs, news articles, and tweets.
+
+```{r source-summary}
+summary_dt <- train[, .(
+  Lines            = .N,
+  Total_Words      = sum(str_count(text, "\\S+")),
+  Mean_Words_Line  = round(mean(str_count(text, "\\S+")), 1),
+  Median_Words_Line = round(median(str_count(text, "\\S+")), 1),
+  Mean_Chars_Line  = round(mean(nchar(text)), 1)
+), by = source]
+
+knitr::kable(summary_dt, caption = "Summary statistics by source")
+```
+
+```{r lines-by-source, fig.cap="Number of lines by source"}
+ggplot(train, aes(x = reorder(source, -table(source)[source]), fill = source)) +
+  geom_bar() +
+  labs(x = "Source", y = "Number of Lines", title = "Lines by Source") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_fill_brewer(palette = "Set2")
+```
+
+## 1.2 Word Count Distribution
+
+```{r word-count-dist}
+train[, word_count := str_count(text, "\\S+")]
+
+ggplot(train, aes(x = word_count)) +
+  geom_histogram(binwidth = 1, fill = "#3498db", color = "white", alpha = 0.8) +
+  xlim(0, 50) +
+  labs(x = "Words per Line", y = "Count", title = "Distribution of Words per Line") +
+  theme_minimal()
+```
+
+```{r word-count-by-source}
+ggplot(train, aes(x = word_count, fill = source)) +
+  geom_histogram(binwidth = 2, alpha = 0.6, position = "identity") +
+  xlim(0, 60) +
+  labs(x = "Words per Line", y = "Count", title = "Word Count Distribution by Source") +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set2")
+```
+
+# 2. Word Frequency Analysis
+
+## 2.1 Tokenize to Words
+
+```{r tokenize-words}
+all_words <- train[, unlist(str_extract_all(tolower(text), "\\b[a-z]+\\b"))]
+cat("Total word tokens:", format(length(all_words), big.mark = ","), "\n")
+cat("Unique word types:", format(length(unique(all_words)), big.mark = ","), "\n")
+```
+
+## 2.2 Word Frequency Table
+
+```{r word-freq}
+word_freq <- as.data.table(table(all_words))
+setnames(word_freq, c("word", "count"))
+word_freq <- word_freq[order(-count)]
+word_freq[, rank := .I]
+word_freq[, freq := count / sum(count)]
+
+cat("Top 20 most frequent words:\n")
+knitr::kable(head(word_freq, 20), caption = "Top 20 Words")
+```
+
+## 2.3 Zipf's Law
+
+```{r zipf-plot, fig.cap="Zipf's Law: Log-Log Plot of Word Frequency vs Rank"}
+ggplot(head(word_freq, 5000), aes(x = log10(rank), y = log10(freq))) +
+  geom_point(alpha = 0.3, size = 0.5, color = "#2c3e50") +
+  geom_smooth(method = "lm", se = FALSE, color = "#e74c3c", linetype = "dashed") +
+  labs(x = "Log10(Rank)", y = "Log10(Frequency)",
+       title = "Zipf's Law: Frequency vs Rank",
+       subtitle = "Red line shows linear fit (power law)") +
+  theme_minimal()
+```
+
+## 2.4 Word Length Distribution
+
+```{r word-length}
+word_lengths <- data.table(word = names(table(all_words)))
+word_lengths[, nchar := nchar(word)]
+
+ggplot(word_lengths, aes(x = nchar)) +
+  geom_histogram(binwidth = 1, fill = "#2ecc71", color = "white", alpha = 0.8) +
+  labs(x = "Word Length (characters)", y = "Count",
+       title = "Distribution of Word Lengths") +
+  theme_minimal()
+```
+
+# 3. N-Gram Analysis
+
+All n-grams are built using base R only — no extra packages.
+
+```{r ngram-build}
+# Sample 5% for n-gram analysis
+set.seed(42)
+sample_idx <- sample(nrow(train), size = floor(0.05 * nrow(train)))
+sample_text <- tolower(train[sample_idx, text])
+
+# Tokenize: split each line into words, add sentence boundary markers
+tokenize_line <- function(line) {
+  words <- unlist(str_extract_all(line, "\\b[a-z]+\\b"))
+  c("^", words, "$")
+}
+
+cat("Tokenizing sample...\n")
+all_tokens <- unlist(lapply(sample_text, tokenize_line))
+cat("Total tokens (incl. boundaries):", format(length(all_tokens), big.mark = ","), "\n")
+
+# Build n-grams from flat token vector
+# For each position, grab the preceding words as context
+build_ngrams <- function(tokens, n) {
+  ngrams <- character(length(tokens) - n + 1)
+  for (i in seq_len(length(tokens) - n + 1)) {
+    ngrams[i] <- paste(tokens[i:(i + n - 1)], collapse = " ")
+  }
+  ngrams
+}
+```
+
+## 3.1 Bigrams (2-grams)
+
+```{r bigrams}
+cat("Building bigrams...\n")
+bigrams_raw <- build_ngrams(all_tokens, 2)
+
+# Count frequencies
+bigram_dt <- as.data.table(table(bigrams_raw))
+setnames(bigram_dt, c("ngram", "count"))
+bigram_dt <- bigram_dt[order(-count)]
+bigram_dt[, freq := count / sum(count)]
+
+cat("Top 20 bigrams:\n")
+knitr::kable(head(bigram_dt, 20), caption = "Top 20 Bigrams")
+```
+
+```{r bigram-plot, fig.cap="Top 20 Bigrams"}
+top_bg <- head(bigram_dt[!grepl("\\^|\\$", ngram)], 20)
+ggplot(top_bg, aes(x = reorder(ngram, count), y = count)) +
+  geom_col(fill = "#9b59b6", alpha = 0.8) +
+  coord_flip() +
+  labs(x = "Bigram", y = "Frequency", title = "Top 20 Bigrams") +
+  theme_minimal()
+```
+
+## 3.2 Trigrams (3-grams)
+
+```{r trigrams}
+cat("Building trigrams...\n")
+trigrams_raw <- build_ngrams(all_tokens, 3)
+
+tri_dt <- as.data.table(table(trigrams_raw))
+setnames(tri_dt, c("ngram", "count"))
+tri_dt <- tri_dt[order(-count)]
+tri_dt[, freq := count / sum(count)]
+
+cat("Top 20 trigrams:\n")
+knitr::kable(head(tri_dt, 20), caption = "Top 20 Trigrams")
+```
+
+```{r trigram-plot, fig.cap="Top 20 Trigrams"}
+top_tri <- head(tri_dt[!grepl("\\^|\\$", ngram)], 20)
+ggplot(top_tri, aes(x = reorder(ngram, count), y = count)) +
+  geom_col(fill = "#e67e22", alpha = 0.8) +
+  coord_flip() +
+  labs(x = "Trigram", y = "Frequency", title = "Top 20 Trigrams") +
+  theme_minimal()
+```
+
+## 3.3 Quadgrams (4-grams)
+
+```{r quadgrams}
+cat("Building quadgrams...\n")
+quadgrams_raw <- build_ngrams(all_tokens, 4)
+
+quad_dt <- as.data.table(table(quadgrams_raw))
+setnames(quad_dt, c("ngram", "count"))
+quad_dt <- quad_dt[order(-count)]
+quad_dt[, freq := count / sum(count)]
+
+cat("Top 15 quadgrams:\n")
+knitr::kable(head(quad_dt, 15), caption = "Top 15 Quadgrams")
+```
+
+# 4. Vocabulary Coverage
+
+## 4.1 How Many Words to Cover X% of Instances?
+
+```{r coverage}
+word_freq[, cum_freq := cumsum(freq)]
+
+coverage_targets <- c(0.50, 0.75, 0.90, 0.95, 0.99)
+coverage_n <- sapply(coverage_targets, function(t) {
+  min(word_freq[cum_freq >= t, rank])
+})
+
+coverage_df <- data.frame(
+  Target              = paste0(coverage_targets * 100, "%"),
+  Unique_Words_Needed = coverage_n,
+  Pct_of_Vocabulary   = round(coverage_n / nrow(word_freq) * 100, 2)
+)
+
+knitr::kable(coverage_df,
+             caption = "Unique words needed to cover X% of all word instances",
+             col.names = c("Coverage Target", "Unique Words Needed", "% of Vocabulary"))
+```
+
+```{r coverage-plot, fig.cap="Cumulative Coverage by Number of Unique Words"}
+ggplot(head(word_freq, 10000), aes(x = rank, y = cum_freq * 100)) +
+  geom_line(color = "#2980b9", linewidth = 0.8) +
+  geom_hline(yintercept = 50, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 90, linetype = "dashed", color = "grey50") +
+  annotate("text", x = 8000, y = 52, label = "50%", hjust = 0, size = 3) +
+  annotate("text", x = 8000, y = 92, label = "90%", hjust = 0, size = 3) +
+  labs(x = "Number of Unique Words (by frequency rank)",
+       y = "Cumulative Coverage (%)",
+       title = "Vocabulary Coverage Curve") +
+  theme_minimal()
+```
+
+## 4.2 Heaps' Law (Vocabulary Growth)
+
+```{r heaps-law}
+sample_sizes <- floor(10^seq(2, log10(nrow(train)), length.out = 20))
+growth <- data.table()
+
+for (sz in sample_sizes) {
+  idx <- sample(nrow(train), size = sz)
+  words <- unlist(str_extract_all(tolower(train[idx, text]), "\\b[a-z]+\\b"))
+  vocab <- length(unique(words))
+  growth <- rbind(growth, data.table(n = sz, vocab = vocab))
+}
+
+ggplot(growth, aes(x = log10(n), y = log10(vocab))) +
+  geom_point(color = "#27ae60", size = 2) +
+  geom_smooth(method = "lm", se = FALSE, color = "#c0392b", linetype = "dashed") +
+  labs(x = "Log10(Documents)", y = "Log10(Unique Words)",
+       title = "Heaps' Law: Vocabulary Growth",
+       subtitle = "Red line shows linear fit in log-log space") +
+  theme_minimal()
+```
+
+# 5. Profanity and Foreign Words
+
+## 5.1 Profanity Check
+
+```{r profanity}
+profanity_words <- c("fuck", "shit", "ass", "bitch", "damn", "hell",
+                     "crap", "dick", "piss", "bastard", "whore", "slut")
+
+profanity_freq <- word_freq[word %in% profanity_words]
+
+cat("Profanity words found:", nrow(profanity_freq), "\n")
+if (nrow(profanity_freq) > 0) {
+  knitr::kable(profanity_freq, caption = "Profanity word frequencies")
+}
+```
+
+## 5.2 Non-English / Foreign Words
+
+```{r foreign-words}
+hapax <- word_freq[count == 1]
+cat("Hapax legomena (words appearing once):", nrow(hapax),
+    "(", round(nrow(hapax) / nrow(word_freq) * 100, 1), "% of vocabulary)\n")
+
+foreign_heuristic <- word_freq[str_detect(word, "[^a-z]")]
+cat("Words with non-standard chars:", nrow(foreign_heuristic), "\n")
+```
+
+# 6. Source-Specific Word Frequencies
+
+```{r source-word-freq}
+top_words_by_source <- lapply(c("blogs", "news", "twitter"), function(src) {
+  words <- unlist(str_extract_all(tolower(train[source == src, text]), "\\b[a-z]+\\b"))
+  freq <- as.data.table(sort(table(words), decreasing = TRUE))
+  setnames(freq, c("word", "count"))
+  freq[, source := src]
+  freq[, rank := .I]
+  head(freq, 30)
+})
+
+all_top <- rbindlist(top_words_by_source)
+
+ggplot(all_top, aes(x = reorder(word, -count), y = count, fill = source)) +
+  geom_col(alpha = 0.8, position = "dodge") +
+  facet_wrap(~source, scales = "free_y", ncol = 1) +
+  coord_flip() +
+  labs(x = "Word", y = "Frequency", title = "Top 30 Words by Source") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_fill_brewer(palette = "Set2")
+```
+
+# 7. Key Findings
+
+```{r findings}
+cat("═══════════════════════════════════════════════════════\n")
+cat("KEY FINDINGS\n")
+cat("═══════════════════════════════════════════════════════\n\n")
+
+cat("1. DATA SIZE\n")
+cat("   - Training set:", format(nrow(train), big.mark = ","), "lines\n")
+cat("   - Test set:", format(nrow(test), big.mark = ","), "lines\n\n")
+
+cat("2. VOCABULARY\n")
+cat("   - Unique words:", format(nrow(word_freq), big.mark = ","), "\n")
+cat("   - Total tokens:", format(sum(word_freq$count), big.mark = ","), "\n")
+cat("   - 50% coverage requires", coverage_n[1], "unique words\n")
+cat("   - 90% coverage requires", coverage_n[3], "unique words\n\n")
+
+cat("3. TOP WORDS\n")
+cat("   - Most common:", head(word_freq$word, 5), "\n")
+cat("   - Top 100 words cover", round(word_freq[100, cum_freq] * 100, 1), "% of tokens\n\n")
+
+cat("4. N-GRAM OBSERVATIONS\n")
+cat("   - Top bigram:", head(bigram_dt[!grepl("\\^|\\$", ngram)]$ngram, 1), "\n")
+cat("   - Top trigram:", head(tri_dt[!grepl("\\^|\\$", ngram)]$ngram, 1), "\n")
+cat("   - Many top n-grams are stopword combinations\n\n")
+
+cat("5. SOURCE DIFFERENCES\n")
+cat("   - Twitter has shortest average lines\n")
+cat("   - News has most formal vocabulary\n")
+cat("   - Blogs are most diverse in word choice\n")
+```
+
+---
+
+*Report generated with R `r getRversion()` on `r Sys.Date()`.*
