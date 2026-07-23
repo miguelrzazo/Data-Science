@@ -11,7 +11,7 @@
 
 <meta name="author" content="Miguel Rosa" />
 
-<meta name="date" content="2026-07-22" />
+<meta name="date" content="2026-07-23" />
 
 <title>SwiftKey Capstone: Exploratory Data Analysis</title>
 
@@ -1570,7 +1570,7 @@ border-radius: 0px;
 <h1 class="title toc-ignore">SwiftKey Capstone: Exploratory Data
 Analysis</h1>
 <h4 class="author">Miguel Rosa</h4>
-<h4 class="date">2026-07-22</h4>
+<h4 class="date">2026-07-23</h4>
 
 </div>
 
@@ -2552,8 +2552,41 @@ ggplot(all_top, aes(x = reorder(word, -count), y = count, fill = source)) +
 <pre><code>##    - News has most formal vocabulary</code></pre>
 <pre class="r"><code>cat(&quot;   - Blogs are most diverse in word choice\n&quot;)</code></pre>
 <pre><code>##    - Blogs are most diverse in word choice</code></pre>
+</div>
+<div id="plans-for-the-prediction-algorithm-and-shiny-app" class="section level1">
+<h1>8. Plans for the Prediction Algorithm and Shiny App</h1>
+<p>This section summarizes, in plain terms, how the exploration above
+translates into a working product.</p>
+<p><strong>The algorithm.</strong> The app will guess the next word as
+you type, the same way a phone keyboard does. It works by looking at the
+last few words you typed and finding what word most commonly comes next
+in the training data — first checking the last 3 words, and falling back
+to the last 2, then the last 1, then just the most common words overall
+if nothing matches. This approach (called “Stupid Backoff”) is a
+standard, well-tested technique that is simple, fast, and doesn’t
+require complex statistical tuning.</p>
+<p><strong>Why it will work.</strong> Section 3 showed that word usage
+is highly skewed (Zipf’s law) — a small number of words and phrases
+account for most of the text, and phrase frequency drops off in a very
+predictable pattern as phrases get longer. That predictability is
+exactly what a next-word model exploits.</p>
+<p><strong>Managing size and speed.</strong> Sections 4–5 showed the
+vocabulary is large but long-tailed (hundreds of thousands of words,
+most used only once). Rare words will be grouped into a single “unknown”
+placeholder, and only the top few candidate next-words will be kept per
+phrase. This keeps the final model small enough to run instantly in a
+web browser rather than needing a large, slow lookup table.</p>
+<p><strong>The app.</strong> The end product will be a Shiny web app: a
+single text box where a user types a phrase, and the three most likely
+next words appear as clickable buttons — clicking one appends it to the
+phrase, just like a phone keyboard’s suggestion bar.</p>
+<p><strong>How we’ll know it’s good.</strong> Before release, the model
+will be tested on text it has never seen, measuring how often the actual
+next word appears in its top 1, 2, or 3 guesses, plus how fast each
+prediction takes (target: comfortably under 100ms, well below what a
+user would notice).</p>
 <hr />
-<p><em>Report generated with R 4.6.1 on 2026-07-22.</em></p>
+<p><em>Report generated with R 4.6.1 on 2026-07-23.</em></p>
 </div>
 
 

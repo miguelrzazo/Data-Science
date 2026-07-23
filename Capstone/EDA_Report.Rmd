@@ -362,6 +362,39 @@ cat("   - News has most formal vocabulary\n")
 cat("   - Blogs are most diverse in word choice\n")
 ```
 
+# 8. Plans for the Prediction Algorithm and Shiny App
+
+This section summarizes, in plain terms, how the exploration above translates into a
+working product.
+
+**The algorithm.** The app will guess the next word as you type, the same way a phone
+keyboard does. It works by looking at the last few words you typed and finding what
+word most commonly comes next in the training data — first checking the last 3 words,
+and falling back to the last 2, then the last 1, then just the most common words overall
+if nothing matches. This approach (called "Stupid Backoff") is a standard,
+well-tested technique that is simple, fast, and doesn't require complex statistical
+tuning.
+
+**Why it will work.** Section 3 showed that word usage is highly skewed (Zipf's law) —
+a small number of words and phrases account for most of the text, and phrase frequency
+drops off in a very predictable pattern as phrases get longer. That predictability is
+exactly what a next-word model exploits.
+
+**Managing size and speed.** Sections 4–5 showed the vocabulary is large but long-tailed
+(hundreds of thousands of words, most used only once). Rare words will be grouped into a
+single "unknown" placeholder, and only the top few candidate next-words will be kept per
+phrase. This keeps the final model small enough to run instantly in a web browser rather
+than needing a large, slow lookup table.
+
+**The app.** The end product will be a Shiny web app: a single text box where a user
+types a phrase, and the three most likely next words appear as clickable buttons —
+clicking one appends it to the phrase, just like a phone keyboard's suggestion bar.
+
+**How we'll know it's good.** Before release, the model will be tested on text it has
+never seen, measuring how often the actual next word appears in its top 1, 2, or 3
+guesses, plus how fast each prediction takes (target: comfortably under 100ms, well
+below what a user would notice).
+
 ---
 
 *Report generated with R `r getRversion()` on `r Sys.Date()`.*
